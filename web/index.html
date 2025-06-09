@@ -6,125 +6,101 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <title>OpenSecAI - Scanner</title>
 </head>
-<body class="bg-gray-900 text-gray-100 min-h-screen flex flex-col items-center py-10">
-  <div class="w-full max-w-4xl bg-gray-800 p-6 rounded-xl shadow-md">
-    <h1 class="text-3xl font-bold text-teal-400 text-center mb-4">🔍 OpenSecAI Dashboard</h1>
-    <p class="text-gray-300 text-center mb-6">Descubra ativos, serviços e vulnerabilidades</p>
+<body class="bg-gray-900 text-gray-100 min-h-screen flex items-center justify-center p-4">
 
-    <div class="flex gap-2">
-      <input
-        id="target"
-        type="text"
-        placeholder="Digite alvo ou rede (ex: 192.168.0.1 ou 10.0.0.0/24)"
-        class="flex-grow px-4 py-2 rounded-lg bg-gray-700 text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400 transition"
-      />
-      <button
-        id="scanBtn"
-        class="px-4 py-2 bg-teal-500 hover:bg-teal-400 rounded-lg text-white font-semibold transition duration-200"
-      >
-        Iniciar Scan
-      </button>
+  <div class="w-full max-w-3xl">
+    <div class="bg-gray-800 p-6 rounded-xl shadow-lg">
+      <h1 class="text-3xl font-bold text-teal-400 mb-2">OpenSecAI</h1>
+      <p class="text-gray-300 mb-4">Scanner inteligente com análise de vulnerabilidades</p>
+
+      <div class="flex items-center gap-2 mb-4">
+        <input id="target" type="text" placeholder="ex: 192.168.0.0/24 ou dominio.com"
+          class="flex-1 px-4 py-2 bg-gray-700 text-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400" />
+        <button id="scanBtn"
+          class="px-4 py-2 bg-teal-500 hover:bg-teal-400 rounded-lg text-gray-900 font-semibold transition">
+          Iniciar Scan
+        </button>
+      </div>
+
+      <div id="result" class="space-y-6 hidden"></div>
     </div>
-
-    <div id="loading" class="text-teal-400 mt-4 hidden">🔄 Escaneando... aguarde...</div>
-    <div id="dashboard" class="mt-8 space-y-6"></div>
   </div>
 
   <script>
     const scanBtn = document.getElementById("scanBtn");
     const targetInput = document.getElementById("target");
-    const dashboard = document.getElementById("dashboard");
-    const loading = document.getElementById("loading");
-
-    function renderResult(data) {
-      dashboard.innerHTML = "";
-
-      if (!Array.isArray(data) || data.length === 0) {
-        dashboard.innerHTML = "<p class='text-gray-300 text-center'>Nenhum ativo encontrado.</p>";
-        return;
-      }
-
-      data.forEach(host => {
-        const hostCard = document.createElement("div");
-        hostCard.className = "bg-gray-700 p-4 rounded-lg shadow-md";
-
-        hostCard.innerHTML = `
-          <h2 class="text-xl font-bold text-teal-300">🖥️ ${host.host}</h2>
-          ${host.mac ? `<p class="text-gray-400">MAC: ${host.mac}</p>` : ""}
-          ${host.os ? `<p class="text-gray-400 mb-2">Sistema: ${host.os}</p>` : ""}
-          <div class="overflow-auto">
-            <table class="w-full mt-2 text-sm text-left text-gray-200 border-t border-gray-600">
-              <thead class="text-gray-400">
-                <tr>
-                  <th class="py-1">Porta</th>
-                  <th>Serviço</th>
-                  <th>Versão</th>
-                  <th>CVEs</th>
-                </tr>
-              </thead>
-                <tbody>
-                  ${(host.ports || []).map(p => `
-                    <tr class="border-t border-gray-600">
-                      <td class="py-1">${p.port}/${p.protocol}</td>
-                      <td>${p.service}</td>
-                      <td>${p.version || "—"}</td>
-                      <td>
-                        ${(p.cves && p.cves.length > 0) ? `
-                          <ul class="list-disc list-inside space-y-1">
-                            ${p.cves.map(cve => `
-                              <li>
-                                <a href="${cve.link}" target="_blank" class="text-teal-400 hover:underline">${cve.id}</a>
-                                <span class="text-yellow-400 ml-1 text-xs">[CVSS: ${cve.cvss}]</span>
-                                <div class="text-gray-400 text-xs">${cve.desc}</div>
-                              </li>
-                            `).join("")}
-                          </ul>
-                        ` : "—"}
-                      </td>
-                    </tr>
-                  `).join("")}
-                </tbody>
-            </table>
-          </div>
-        `;
-
-        dashboard.appendChild(hostCard);
-      });
-    }
+    const resultDiv = document.getElementById("result");
 
     scanBtn.addEventListener("click", () => {
       const target = targetInput.value.trim();
-      if (!target) {
-        alert("Por favor, informe um alvo válido.");
-        return;
-      }
+      if (!target) return alert("Informe um alvo válido.");
 
       scanBtn.disabled = true;
-      scanBtn.textContent = "Processando...";
-      loading.classList.remove("hidden");
-      dashboard.innerHTML = "";
+      scanBtn.textContent = "Analisando...";
+      resultDiv.innerHTML = "";
+      resultDiv.classList.add("hidden");
 
       fetch("/recon", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ target })
       })
-        .then(async res => {
-          if (!res.ok) {
-            throw new Error(await res.text());
-          }
+        .then(res => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
           return res.json();
         })
-        .then(renderResult)
+        .then(data => {
+          if (!Array.isArray(data)) throw new Error("Resposta inválida.");
+          renderResult(data);
+        })
         .catch(err => {
-          dashboard.innerHTML = `<p class='text-red-400 text-center'>Erro: ${err.message}</p>`;
+          resultDiv.innerHTML = `<div class="text-red-400">Erro: ${err.message}</div>`;
+          resultDiv.classList.remove("hidden");
         })
         .finally(() => {
           scanBtn.disabled = false;
           scanBtn.textContent = "Iniciar Scan";
-          loading.classList.add("hidden");
         });
     });
+
+    function renderResult(data) {
+      resultDiv.innerHTML = "";
+
+      data.forEach(host => {
+        const div = document.createElement("div");
+        div.className = "bg-gray-700 p-4 rounded-lg text-left";
+
+        div.innerHTML = `
+          <h2 class="text-xl font-bold text-teal-300">Host: ${host.host}</h2>
+          <p class="text-sm text-gray-300">MAC: ${host.mac || "N/A"}</p>
+          <p class="text-sm text-gray-300 mb-2">OS: ${host.os || "Desconhecido"}</p>
+
+          <h3 class="text-lg font-semibold mt-4 text-white">Análise de Risco</h3>
+          <p><strong>Tipo:</strong> ${host.analysis?.tipo_dispositivo || "-"}</p>
+          <p><strong>Risco:</strong> <span class="text-red-400">${host.analysis?.risco_geral || "-"}</span></p>
+          <p class="text-sm italic text-gray-300">${host.analysis?.justificativa || ""}</p>
+
+          <h4 class="mt-2 font-semibold">CVSS</h4>
+          <p><strong>Base:</strong> ${host.analysis?.cvss?.cvss_base || "-"}</p>
+          <p><strong>Temporal:</strong> ${host.analysis?.cvss?.cvss_temporal || "-"}</p>
+          <p class="text-sm italic text-gray-400">${host.analysis?.cvss?.cvss_explained || ""}</p>
+
+          ${Array.isArray(host.analysis?.CVEs_criticos) && host.analysis.CVEs_criticos.length ? `
+            <h4 class="mt-4 font-semibold">CVEs Críticos</h4>
+            <ul class="list-disc list-inside text-sm text-red-300">
+              ${host.analysis.CVEs_criticos.map(cve => `
+                <li>
+                  <a href="${cve.link}" target="_blank" class="underline text-red-400">${cve.cve}</a> – ${cve.descricao} (CVSS: ${cve.cvss})
+                </li>
+              `).join("")}
+            </ul>` : `<p class="mt-2 text-sm text-gray-400 italic">Nenhuma CVE crítica identificada.</p>`}
+        `;
+
+        resultDiv.appendChild(div);
+      });
+
+      resultDiv.classList.remove("hidden");
+    }
   </script>
 </body>
 </html>
