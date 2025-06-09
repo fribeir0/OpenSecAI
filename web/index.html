@@ -3,84 +3,94 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  
-  <!-- Tailwind via CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            teal: {
-              100: "#CCFBF1",
-              200: "#99F6E4",
-              300: "#5EEAD4",
-              400: "#2DD4BF",
-              500: "#14B8A6",
-              600: "#0D9488",
-            },
-            gray: {
-              900: "#111827",
-              800: "#1F2937",
-              700: "#374151",
-              600: "#4B5563",
-              100: "#F3F4F6",
-            },
-          },
-        },
-      },
-    };
-  </script>
-  <title>Vulnerability Analysis</title>
+  <title>OpenSecAI - Scanner</title>
 </head>
-<body class="bg-gray-900 text-gray-100 flex items-center justify-center h-screen">
-  <div class="bg-gray-800 bg-opacity-95 rounded-2xl p-8 shadow-xl w-full max-w-md text-center">
-    <div class="inline-block p-4 bg-gray-700 rounded-full">
-      <svg
-        class="h-12 w-12 text-teal-400"
-        fill="none"
-        stroke="currentColor"
-        viewBox="0 0 64 64"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <path
-          stroke-width="2.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          d="M32 6l22 8v12c0 7-5 13-12 15v6h6v12h-6v6h-12v-6h-6v-12h6v-6c-7-2-12-8-12-15V14l22-8z"
-        />
-        <circle cx="32" cy="32" r="6" fill="currentColor" class="text-teal-400" />
-      </svg>
-    </div>
+<body class="bg-gray-900 text-gray-100 min-h-screen flex flex-col items-center py-10">
+  <div class="w-full max-w-4xl bg-gray-800 p-6 rounded-xl shadow-md">
+    <h1 class="text-3xl font-bold text-teal-400 text-center mb-4">🔍 OpenSecAI Dashboard</h1>
+    <p class="text-gray-300 text-center mb-6">Descubra ativos, serviços e vulnerabilidades</p>
 
-    <h1 class="mt-4 text-3xl font-bold text-teal-400">Vulnerability Analysis</h1>
-    <p class="mt-2 text-gray-300">Encontre. Exponha. Elimine.</p>
-
-    <div class="mt-6 flex flex-col items-center">
+    <div class="flex gap-2">
       <input
         id="target"
         type="text"
         placeholder="Digite alvo ou rede (ex: 192.168.0.1 ou 10.0.0.0/24)"
-        class="w-full px-4 py-2 rounded-lg bg-gray-700 text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400 transition"
+        class="flex-grow px-4 py-2 rounded-lg bg-gray-700 text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400 transition"
       />
       <button
         id="scanBtn"
-        class="mt-4 w-full px-4 py-2 bg-teal-500 hover:bg-teal-400 rounded-lg text-gray-100 font-semibold transition duration-200"
+        class="px-4 py-2 bg-teal-500 hover:bg-teal-400 rounded-lg text-white font-semibold transition duration-200"
       >
         Iniciar Scan
       </button>
     </div>
 
-    <pre
-      id="result"
-      class="mt-6 bg-gray-700 text-gray-100 p-4 rounded-lg max-h-48 overflow-auto whitespace-pre-wrap hidden"
-    ></pre>
+    <div id="loading" class="text-teal-400 mt-4 hidden">🔄 Escaneando... aguarde...</div>
+    <div id="dashboard" class="mt-8 space-y-6"></div>
   </div>
 
   <script>
     const scanBtn = document.getElementById("scanBtn");
     const targetInput = document.getElementById("target");
-    const resultPre = document.getElementById("result");
+    const dashboard = document.getElementById("dashboard");
+    const loading = document.getElementById("loading");
+
+    function renderResult(data) {
+      dashboard.innerHTML = "";
+
+      if (!Array.isArray(data) || data.length === 0) {
+        dashboard.innerHTML = "<p class='text-gray-300 text-center'>Nenhum ativo encontrado.</p>";
+        return;
+      }
+
+      data.forEach(host => {
+        const hostCard = document.createElement("div");
+        hostCard.className = "bg-gray-700 p-4 rounded-lg shadow-md";
+
+        hostCard.innerHTML = `
+          <h2 class="text-xl font-bold text-teal-300">🖥️ ${host.host}</h2>
+          ${host.mac ? `<p class="text-gray-400">MAC: ${host.mac}</p>` : ""}
+          ${host.os ? `<p class="text-gray-400 mb-2">Sistema: ${host.os}</p>` : ""}
+          <div class="overflow-auto">
+            <table class="w-full mt-2 text-sm text-left text-gray-200 border-t border-gray-600">
+              <thead class="text-gray-400">
+                <tr>
+                  <th class="py-1">Porta</th>
+                  <th>Serviço</th>
+                  <th>Versão</th>
+                  <th>CVEs</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${host.ports.map(p => `
+                  <tr class="border-t border-gray-600">
+                    <td class="py-1">${p.port}/${p.protocol}</td>
+                    <td>${p.service}</td>
+                    <td>${p.version || "—"}</td>
+                    <td>
+                      ${p.cves && p.cves.length > 0 ? `
+                        <ul class="list-disc list-inside space-y-1">
+                          ${p.cves.map(cve => `
+                            <li>
+                              <a href="${cve.link}" target="_blank" class="text-teal-400 hover:underline">${cve.id}</a>
+                              <span class="text-yellow-400 ml-1 text-xs">[CVSS: ${cve.cvss}]</span>
+                              <div class="text-gray-400 text-xs">${cve.desc}</div>
+                            </li>
+                          `).join("")}
+                        </ul>
+                      ` : "—"}
+                    </td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        `;
+
+        dashboard.appendChild(hostCard);
+      });
+    }
 
     scanBtn.addEventListener("click", () => {
       const target = targetInput.value.trim();
@@ -89,43 +99,30 @@
         return;
       }
 
-      // Desabilita botão e coloca “carregando”
       scanBtn.disabled = true;
       scanBtn.textContent = "Processando...";
-      resultPre.classList.add("hidden");
-      resultPre.textContent = "";
+      loading.classList.remove("hidden");
+      dashboard.innerHTML = "";
 
-      // Faz POST para /recon
       fetch("/recon", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target }),
+        body: JSON.stringify({ target })
       })
-        .then(async (res) => {
+        .then(async res => {
           if (!res.ok) {
-            const texto = await res.text();
-            throw new Error(`HTTP ${res.status}: ${texto}`);
+            throw new Error(await res.text());
           }
           return res.json();
         })
-        .then((data) => {
-          
-          if (data.error) {
-            resultPre.textContent = `Erro: ${data.error}`;
-          } else if (data.message) {
-            resultPre.textContent = data.message;
-          } else {
-            resultPre.textContent = JSON.stringify(data, null, 2);
-          }
-          resultPre.classList.remove("hidden");
-        })
-        .catch((err) => {
-          resultPre.textContent = `Falha na requisição: ${err.message}`;
-          resultPre.classList.remove("hidden");
+        .then(renderResult)
+        .catch(err => {
+          dashboard.innerHTML = `<p class='text-red-400 text-center'>Erro: ${err.message}</p>`;
         })
         .finally(() => {
           scanBtn.disabled = false;
           scanBtn.textContent = "Iniciar Scan";
+          loading.classList.add("hidden");
         });
     });
   </script>
