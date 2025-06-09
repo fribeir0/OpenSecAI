@@ -121,3 +121,61 @@ func RunNmap(target string, ports []int) []models.PortService {
     }
     return results
 }
+
+func RunNmapMulti(hosts map[string][]int) map[string][]models.PortService {
+    ipList := []string{}
+    portSet := map[int]struct{}{}
+
+    for ip, ports := range hosts {
+        ipList = append(ipList, ip)
+        for _, p := range ports {
+            portSet[p] = struct{}{}
+        }
+    }
+
+    if len(ipList) == 0 || len(portSet) == 0 {
+        return nil
+    }
+
+    ports := []string{}
+    for p := range portSet {
+        ports = append(ports, strconv.Itoa(p))
+    }
+
+    args := append([]string{"-Pn", "-sV", "-p", strings.Join(ports, ",")}, ipList...)
+    log.Printf("[DEBUG] Executando Nmap combinado com args: %v", args)
+
+    out, err := exec.Command("nmap", args...).Output()
+    if err != nil {
+        log.Printf("[ERROR] Nmap combinado falhou: %v", err)
+        return nil
+    }
+    log.Printf("[DEBUG] Nmap combinado output:\n%s", out)
+
+    results := make(map[string][]models.PortService)
+    var currentIP string
+    lines := strings.Split(string(out), "\n")
+    for _, line := range lines {
+        if strings.HasPrefix(line, "Nmap scan report for ") {
+            currentIP = strings.TrimPrefix(line, "Nmap scan report for ")
+            continue
+        }
+        fields := strings.Fields(line)
+        if len(fields) >= 4 && strings.Contains(fields[0], "/tcp") && fields[1] == "open" {
+            portStr := strings.Split(fields[0], "/")[0]
+            port, err := strconv.Atoi(portStr)
+            if err != nil {
+                continue
+            }
+            service := fields[2]
+            version := strings.Join(fields[3:], " ")
+            results[currentIP] = append(results[currentIP], models.PortService{
+                Port:     port,
+                Protocol: "tcp",
+                Service:  service,
+                Version:  version,
+            })
+        }
+    }
+    return results
+}
