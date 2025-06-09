@@ -64,43 +64,50 @@
     });
 
     function renderResult(data) {
-      resultDiv.innerHTML = "";
+    const resultDiv = document.getElementById("result");
+    resultDiv.innerHTML = "";
 
-      data.forEach(host => {
-        const div = document.createElement("div");
-        div.className = "bg-gray-700 p-4 rounded-lg text-left";
+    data.forEach(host => {
+      const analysis = host.analysis || {};
+      const cvss = analysis.cvss || {};
+      const cves = Array.isArray(analysis.CVEs_criticos) ? analysis.CVEs_criticos : [];
 
-        div.innerHTML = `
-          <h2 class="text-xl font-bold text-teal-300">Host: ${host.host}</h2>
-          <p class="text-sm text-gray-300">MAC: ${host.mac || "N/A"}</p>
-          <p class="text-sm text-gray-300 mb-2">OS: ${host.os || "Desconhecido"}</p>
+      const div = document.createElement("div");
+      div.className = "bg-gray-700 p-4 rounded-lg mb-4 text-left";
 
-          <h3 class="text-lg font-semibold mt-4 text-white">Análise de Risco</h3>
-          <p><strong>Tipo:</strong> ${host.analysis?.tipo_dispositivo || "-"}</p>
-          <p><strong>Risco:</strong> <span class="text-red-400">${host.analysis?.risco_geral || "-"}</span></p>
-          <p class="text-sm italic text-gray-300">${host.analysis?.justificativa || ""}</p>
+      div.innerHTML = `
+        <h2 class="text-xl font-bold text-teal-300 mb-1">Host: ${host.host}</h2>
+        <p class="text-sm text-gray-300">MAC: ${host.mac || "N/A"}</p>
+        <p class="text-sm text-gray-300 mb-2">OS: ${host.os || "Desconhecido"}</p>
 
-          <h4 class="mt-2 font-semibold">CVSS</h4>
-          <p><strong>Base:</strong> ${host.analysis?.cvss?.cvss_base || "-"}</p>
-          <p><strong>Temporal:</strong> ${host.analysis?.cvss?.cvss_temporal || "-"}</p>
-          <p class="text-sm italic text-gray-400">${host.analysis?.cvss?.cvss_explained || ""}</p>
+        <h3 class="text-lg font-semibold text-white mt-4">🔎 Análise de Risco</h3>
+        <p><strong>Tipo:</strong> ${analysis.tipo_dispositivo || "—"}</p>
+        <p><strong>Risco:</strong> <span class="text-red-400">${analysis.risco_geral || "—"}</span></p>
+        <p class="text-sm italic text-gray-400 mt-1">${analysis.justificativa || ""}</p>
 
-          ${Array.isArray(host.analysis?.CVEs_criticos) && host.analysis.CVEs_criticos.length ? `
-            <h4 class="mt-4 font-semibold">CVEs Críticos</h4>
-            <ul class="list-disc list-inside text-sm text-red-300">
-              ${host.analysis.CVEs_criticos.map(cve => `
-                <li>
-                  <a href="${cve.link}" target="_blank" class="underline text-red-400">${cve.cve}</a> – ${cve.descricao} (CVSS: ${cve.cvss})
-                </li>
-              `).join("")}
-            </ul>` : `<p class="mt-2 text-sm text-gray-400 italic">Nenhuma CVE crítica identificada.</p>`}
-        `;
+        <h4 class="mt-4 font-semibold">🎯 CVSS</h4>
+        <p><strong>Base:</strong> ${cvss.cvss_base || "—"}</p>
+        <p><strong>Temporal:</strong> ${cvss.cvss_temporal || "—"}</p>
+        <p class="text-sm italic text-gray-400">${cvss.cvss_explained || ""}</p>
 
-        resultDiv.appendChild(div);
-      });
+        ${cves.length > 0 ? `
+          <h4 class="mt-4 font-semibold">🔥 CVEs Críticos</h4>
+          <ul class="list-disc list-inside text-sm text-red-300">
+            ${cves.map(cve => `
+              <li>
+                <a href="${cve.link}" class="underline text-red-400" target="_blank">${cve.cve}</a> – ${cve.descricao} (CVSS: ${cve.cvss})
+              </li>
+            `).join("")}
+          </ul>
+        ` : `<p class="mt-2 text-sm italic text-gray-400">Nenhuma CVE crítica identificada.</p>`}
+      `;
 
-      resultDiv.classList.remove("hidden");
-    }
+      resultDiv.appendChild(div);
+    });
+
+    resultDiv.classList.remove("hidden");
+  }
+
   </script>
 </body>
 </html>
