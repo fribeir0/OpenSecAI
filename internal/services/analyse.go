@@ -8,7 +8,7 @@ import (
 )
 
 func AnalyzeWithN8N(hostData interface{}) map[string]interface{} {
-	webhookURL := "https://SEU_N8N_URL/webhook/analyze" // 🛑 substitua com sua URL real
+	webhookURL := "https://n8n.srv794951.hstgr.cloud/webhook-test/5d00c979-3cbc-402c-8be6-6dd92036e6a6"
 
 	payload, _ := json.Marshal(hostData)
 	resp, err := http.Post(webhookURL, "application/json", bytes.NewBuffer(payload))
