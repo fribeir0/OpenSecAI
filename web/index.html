@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  
+  <!-- Tailwind via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            teal: {
+              100: "#CCFBF1",
+              200: "#99F6E4",
+              300: "#5EEAD4",
+              400: "#2DD4BF",
+              500: "#14B8A6",
+              600: "#0D9488",
+            },
+            gray: {
+              900: "#111827",
+              800: "#1F2937",
+              700: "#374151",
+              600: "#4B5563",
+              100: "#F3F4F6",
+            },
+          },
+        },
+      },
+    };
+  </script>
+  <title>Vulnerability Analysis</title>
+</head>
+<body class="bg-gray-900 text-gray-100 flex items-center justify-center h-screen">
+  <div class="bg-gray-800 bg-opacity-95 rounded-2xl p-8 shadow-xl w-full max-w-md text-center">
+    <div class="inline-block p-4 bg-gray-700 rounded-full">
+      <svg
+        class="h-12 w-12 text-teal-400"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 64 64"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          stroke-width="2.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M32 6l22 8v12c0 7-5 13-12 15v6h6v12h-6v6h-12v-6h-6v-12h6v-6c-7-2-12-8-12-15V14l22-8z"
+        />
+        <circle cx="32" cy="32" r="6" fill="currentColor" class="text-teal-400" />
+      </svg>
+    </div>
+
+    <h1 class="mt-4 text-3xl font-bold text-teal-400">Vulnerability Analysis</h1>
+    <p class="mt-2 text-gray-300">Encontre. Exponha. Elimine.</p>
+
+    <div class="mt-6 flex flex-col items-center">
+      <input
+        id="target"
+        type="text"
+        placeholder="Digite alvo ou rede (ex: 192.168.0.1 ou 10.0.0.0/24)"
+        class="w-full px-4 py-2 rounded-lg bg-gray-700 text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400 transition"
+      />
+      <button
+        id="scanBtn"
+        class="mt-4 w-full px-4 py-2 bg-teal-500 hover:bg-teal-400 rounded-lg text-gray-100 font-semibold transition duration-200"
+      >
+        Iniciar Scan
+      </button>
+    </div>
+
+    <pre
+      id="result"
+      class="mt-6 bg-gray-700 text-gray-100 p-4 rounded-lg max-h-48 overflow-auto whitespace-pre-wrap hidden"
+    ></pre>
+  </div>
+
+  <script>
+    const scanBtn = document.getElementById("scanBtn");
+    const targetInput = document.getElementById("target");
+    const resultPre = document.getElementById("result");
+
+    scanBtn.addEventListener("click", () => {
+      const target = targetInput.value.trim();
+      if (!target) {
+        alert("Por favor, informe um alvo válido.");
+        return;
+      }
+
+      // Desabilita botão e coloca “carregando”
+      scanBtn.disabled = true;
+      scanBtn.textContent = "Processando...";
+      resultPre.classList.add("hidden");
+      resultPre.textContent = "";
+
+      // Faz POST para /recon
+      fetch("/recon", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target }),
+      })
+        .then(async (res) => {
+          if (!res.ok) {
+            const texto = await res.text();
+            throw new Error(`HTTP ${res.status}: ${texto}`);
+          }
+          return res.json();
+        })
+        .then((data) => {
+          
+          if (data.error) {
+            resultPre.textContent = `Erro: ${data.error}`;
+          } else if (data.message) {
+            resultPre.textContent = data.message;
+          } else {
+            resultPre.textContent = JSON.stringify(data, null, 2);
+          }
+          resultPre.classList.remove("hidden");
+        })
+        .catch((err) => {
+          resultPre.textContent = `Falha na requisição: ${err.message}`;
+          resultPre.classList.remove("hidden");
+        })
+        .finally(() => {
+          scanBtn.disabled = false;
+          scanBtn.textContent = "Iniciar Scan";
+        });
+    });
+  </script>
+</body>
+</html>
