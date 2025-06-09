@@ -107,7 +107,7 @@ func RunNmapFast(target string, ports []int) models.HostResult {
     for _, line := range lines {
         line = strings.TrimSpace(line)
 
-        // Extrair portas abertas
+        // Portas abertas
         if strings.Contains(line, "/tcp") && strings.Contains(line, "open") {
             fields := strings.Fields(line)
             if len(fields) >= 4 {
@@ -121,11 +121,12 @@ func RunNmapFast(target string, ports []int) models.HostResult {
                     Protocol: "tcp",
                     Service:  service,
                     Version:  version,
+                    CVEs:     EnrichWithCVEs(service, version),
                 })
             }
         }
 
-        // Extrair MAC
+        // MAC
         if strings.HasPrefix(line, "MAC Address:") {
             parts := strings.SplitN(line, ":", 2)
             if len(parts) == 2 {
@@ -133,7 +134,7 @@ func RunNmapFast(target string, ports []int) models.HostResult {
             }
         }
 
-        // Extrair OS
+        // OS
         if strings.HasPrefix(line, "OS details:") {
             result.OS = strings.TrimSpace(strings.TrimPrefix(line, "OS details:"))
         } else if strings.HasPrefix(line, "Running:") && result.OS == "" {
@@ -145,9 +146,11 @@ func RunNmapFast(target string, ports []int) models.HostResult {
 }
 
 
+
 func RunNmapMultiFast(hosts map[string][]int) map[string]models.HostResult {
+    results := make(map[string]models.HostResult)
     if len(hosts) == 0 {
-        return nil
+        return results
     }
 
     var allIPs []string
@@ -165,7 +168,6 @@ func RunNmapMultiFast(hosts map[string][]int) map[string]models.HostResult {
     }
 
     portsStr := strings.Join(uniquePorts, ",")
-
     args := append([]string{
         "-T4", "--max-retries", "1", "--host-timeout", "30s",
         "-Pn", "-sV", "-O", "-p", portsStr,
@@ -175,11 +177,62 @@ func RunNmapMultiFast(hosts map[string][]int) map[string]models.HostResult {
     out, err := exec.Command("nmap", args...).Output()
     if err != nil {
         log.Printf("[ERROR] NmapMultiFast falhou: %v", err)
-        return nil
+        return results
     }
 
-    return parseNmapMultiOutput(string(out))
+    blocks := strings.Split(string(out), "Nmap scan report for ")
+    for _, block := range blocks[1:] {
+        lines := strings.Split(block, "\n")
+        hostLine := strings.Fields(lines[0])
+        if len(hostLine) == 0 {
+            continue
+        }
+
+        ip := hostLine[len(hostLine)-1]
+        var hostResult models.HostResult
+        hostResult.Host = ip
+
+        for _, line := range lines {
+            line = strings.TrimSpace(line)
+
+            if strings.Contains(line, "/tcp") && strings.Contains(line, "open") {
+                fields := strings.Fields(line)
+                if len(fields) >= 4 {
+                    portStr := strings.Split(fields[0], "/")[0]
+                    port, _ := strconv.Atoi(portStr)
+                    service := fields[2]
+                    version := strings.Join(fields[3:], " ")
+
+                    hostResult.Ports = append(hostResult.Ports, models.PortService{
+                        Port:     port,
+                        Protocol: "tcp",
+                        Service:  service,
+                        Version:  version,
+                        CVEs:     EnrichWithCVEs(service, version),
+                    })
+                }
+            }
+
+            if strings.HasPrefix(line, "MAC Address:") {
+                parts := strings.SplitN(line, ":", 2)
+                if len(parts) == 2 {
+                    hostResult.MAC = strings.TrimSpace(parts[1])
+                }
+            }
+
+            if strings.HasPrefix(line, "OS details:") {
+                hostResult.OS = strings.TrimSpace(strings.TrimPrefix(line, "OS details:"))
+            } else if strings.HasPrefix(line, "Running:") && hostResult.OS == "" {
+                hostResult.OS = strings.TrimSpace(strings.TrimPrefix(line, "Running:"))
+            }
+        }
+
+        results[ip] = hostResult
+    }
+
+    return results
 }
+
 
 func parseNmapMultiOutput(output string) map[string]models.HostResult {
     results := make(map[string]models.HostResult)
