@@ -16,11 +16,13 @@ type PortService struct {
 }
 
 type HostResult struct {
-    Host  string        `json:"host"`
-    MAC   string        `json:"mac,omitempty"`
-    OS    string        `json:"os,omitempty"`
-    Ports []PortService `json:"ports"`
+    Host     string             `json:"host"`
+    MAC      string             `json:"mac,omitempty"`
+    OS       string             `json:"os,omitempty"`
+    Ports    []PortService      `json:"ports"`
+    Analysis map[string]interface{} `json:"analysis,omitempty"`
 }
+
 
 type ReconRequest struct {
     Target string   `json:"target"`
