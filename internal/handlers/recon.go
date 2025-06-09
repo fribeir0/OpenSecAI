@@ -24,16 +24,14 @@ func ReconHandler(c *gin.Context) {
 
     if net.ParseIP(target) != nil || strings.Contains(target, "/") {
         log.Println("[INFO] IP/CIDR detected:", target)
-        openPortsMap := services.RunNaabuCIDR(target, portas)
 
-        for ip, openPorts := range openPortsMap {
-            if len(openPorts) == 0 {
-                continue
-            }
-            nmapScan := services.RunNmap(ip, openPorts)
+        openPortsMap := services.RunNaabuCIDR(target, portas)
+        nmapResults := services.RunNmapMulti(openPortsMap)
+
+        for ip, ports := range nmapResults {
             finalResults = append(finalResults, models.HostResult{
                 Host:  ip,
-                Ports: nmapScan,
+                Ports: ports,
             })
         }
     } else {
