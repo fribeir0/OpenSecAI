@@ -86,96 +86,150 @@ func RunNaabuCIDR(cidr string, ports []string) map[string][]int {
     return result
 }
 
-func RunNmap(target string, ports []int) []models.PortService {
-    if len(ports) == 0 {
-        return nil
-    }
-    portsStr := strings.Trim(strings.Join(strings.Fields(fmt.Sprint(ports)), ","), "[]")
-    log.Printf("[DEBUG] Executando Nmap para %s nas portas: %v", target, portsStr)
-    out, err := exec.Command("nmap", "-p", portsStr, "-sV", "-Pn", target).Output()
-    if err != nil {
-        log.Printf("[ERROR] Nmap falhou: %v", err)
-        return nil
-    }
-    log.Printf("[DEBUG] Nmap output bruto:\n%s", out)
+func RunNmapFast(target string, ports []int) models.HostResult {
+    var result models.HostResult
+    result.Host = target
 
-    var results []models.PortService
+    if len(ports) == 0 {
+        return result
+    }
+
+    portsStr := strings.Trim(strings.Join(strings.Fields(fmt.Sprint(ports)), ","), "[]")
+    cmd := exec.Command("nmap", "-T4", "--max-retries", "1", "--host-timeout", "30s", "-p", portsStr, "-sV", "-O", "-Pn", target)
+
+    out, err := cmd.Output()
+    if err != nil {
+        log.Printf("[ERROR] NmapFast falhou para %s: %v", target, err)
+        return result
+    }
+
     lines := strings.Split(string(out), "\n")
     for _, line := range lines {
-        fields := strings.Fields(line)
-        if len(fields) >= 4 && strings.Contains(fields[0], "/tcp") && fields[1] == "open" {
-            portStr := strings.Split(fields[0], "/")[0]
-            port, err := strconv.Atoi(portStr)
-            if err != nil {
-                continue
+        line = strings.TrimSpace(line)
+
+        // Extrair portas abertas
+        if strings.Contains(line, "/tcp") && strings.Contains(line, "open") {
+            fields := strings.Fields(line)
+            if len(fields) >= 4 {
+                portStr := strings.Split(fields[0], "/")[0]
+                port, _ := strconv.Atoi(portStr)
+                service := fields[2]
+                version := strings.Join(fields[3:], " ")
+
+                result.Ports = append(result.Ports, models.PortService{
+                    Port:     port,
+                    Protocol: "tcp",
+                    Service:  service,
+                    Version:  version,
+                })
             }
-            service := fields[2]
-            version := strings.Join(fields[3:], " ")
-            results = append(results, models.PortService{
-                Port:     port,
-                Protocol: "tcp",
-                Service:  service,
-                Version:  version,
-            })
+        }
+
+        // Extrair MAC
+        if strings.HasPrefix(line, "MAC Address:") {
+            parts := strings.SplitN(line, ":", 2)
+            if len(parts) == 2 {
+                result.MAC = strings.TrimSpace(parts[1])
+            }
+        }
+
+        // Extrair OS
+        if strings.HasPrefix(line, "OS details:") {
+            result.OS = strings.TrimSpace(strings.TrimPrefix(line, "OS details:"))
+        } else if strings.HasPrefix(line, "Running:") && result.OS == "" {
+            result.OS = strings.TrimSpace(strings.TrimPrefix(line, "Running:"))
         }
     }
-    return results
+
+    return result
 }
 
-func RunNmapMulti(hosts map[string][]int) map[string][]models.PortService {
-    ipList := []string{}
-    portSet := map[int]struct{}{}
 
+func RunNmapMultiFast(hosts map[string][]int) map[string]models.HostResult {
+    if len(hosts) == 0 {
+        return nil
+    }
+
+    var allIPs []string
+    portSet := make(map[int]struct{})
     for ip, ports := range hosts {
-        ipList = append(ipList, ip)
+        allIPs = append(allIPs, ip)
         for _, p := range ports {
             portSet[p] = struct{}{}
         }
     }
 
-    if len(ipList) == 0 || len(portSet) == 0 {
-        return nil
-    }
-
-    ports := []string{}
+    var uniquePorts []string
     for p := range portSet {
-        ports = append(ports, strconv.Itoa(p))
+        uniquePorts = append(uniquePorts, strconv.Itoa(p))
     }
 
-    args := append([]string{"-Pn", "-sV", "-p", strings.Join(ports, ",")}, ipList...)
-    log.Printf("[DEBUG] Executando Nmap combinado com args: %v", args)
+    portsStr := strings.Join(uniquePorts, ",")
 
+    args := append([]string{
+        "-T4", "--max-retries", "1", "--host-timeout", "30s",
+        "-Pn", "-sV", "-O", "-p", portsStr,
+    }, allIPs...)
+
+    log.Printf("[DEBUG] Executando NmapMultiFast: nmap %s", strings.Join(args, " "))
     out, err := exec.Command("nmap", args...).Output()
     if err != nil {
-        log.Printf("[ERROR] Nmap combinado falhou: %v", err)
+        log.Printf("[ERROR] NmapMultiFast falhou: %v", err)
         return nil
     }
-    log.Printf("[DEBUG] Nmap combinado output:\n%s", out)
 
-    results := make(map[string][]models.PortService)
-    var currentIP string
-    lines := strings.Split(string(out), "\n")
-    for _, line := range lines {
-        if strings.HasPrefix(line, "Nmap scan report for ") {
-            currentIP = strings.TrimPrefix(line, "Nmap scan report for ")
+    return parseNmapMultiOutput(string(out))
+}
+
+func parseNmapMultiOutput(output string) map[string]models.HostResult {
+    results := make(map[string]models.HostResult)
+    blocks := strings.Split(output, "Nmap scan report for ")
+
+    for _, block := range blocks[1:] {
+        lines := strings.Split(block, "\n")
+        hostLine := strings.Fields(lines[0])
+        if len(hostLine) == 0 {
             continue
         }
-        fields := strings.Fields(line)
-        if len(fields) >= 4 && strings.Contains(fields[0], "/tcp") && fields[1] == "open" {
-            portStr := strings.Split(fields[0], "/")[0]
-            port, err := strconv.Atoi(portStr)
-            if err != nil {
-                continue
+
+        ip := hostLine[len(hostLine)-1]
+        var mac, os string
+        var ports []models.PortService
+
+        for _, line := range lines {
+            if strings.Contains(line, "/tcp") && strings.Contains(line, "open") {
+                fields := strings.Fields(line)
+                if len(fields) >= 4 {
+                    portStr := strings.Split(fields[0], "/")[0]
+                    port, _ := strconv.Atoi(portStr)
+                    service := fields[2]
+                    version := strings.Join(fields[3:], " ")
+
+                    ports = append(ports, models.PortService{
+                        Port:     port,
+                        Protocol: "tcp",
+                        Service:  service,
+                        Version:  version,
+                    })
+                }
             }
-            service := fields[2]
-            version := strings.Join(fields[3:], " ")
-            results[currentIP] = append(results[currentIP], models.PortService{
-                Port:     port,
-                Protocol: "tcp",
-                Service:  service,
-                Version:  version,
-            })
+            if strings.HasPrefix(line, "MAC Address:") {
+                mac = strings.TrimSpace(strings.SplitN(line, ":", 2)[1])
+            }
+            if strings.HasPrefix(line, "OS details:") {
+                os = strings.TrimSpace(strings.TrimPrefix(line, "OS details:"))
+            } else if strings.HasPrefix(line, "Running:") && os == "" {
+                os = strings.TrimSpace(strings.TrimPrefix(line, "Running:"))
+            }
+        }
+
+        results[ip] = models.HostResult{
+            Host:  ip,
+            MAC:   mac,
+            OS:    os,
+            Ports: ports,
         }
     }
+
     return results
 }

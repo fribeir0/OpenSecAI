@@ -5,6 +5,7 @@ import (
     "net"
     "net/http"
     "strings"
+    "sync"
 
     "github.com/gin-gonic/gin"
     "go-recon-ai-modular/internal/models"
@@ -24,38 +25,53 @@ func ReconHandler(c *gin.Context) {
 
     if net.ParseIP(target) != nil || strings.Contains(target, "/") {
         log.Println("[INFO] IP/CIDR detected:", target)
-
         openPortsMap := services.RunNaabuCIDR(target, portas)
-        nmapResults := services.RunNmapMulti(openPortsMap)
-
-        for ip, ports := range nmapResults {
-            finalResults = append(finalResults, models.HostResult{
-                Host:  ip,
-                Ports: ports,
-            })
+        if len(openPortsMap) > 0 {
+            nmapResults := services.RunNmapMultiFast(openPortsMap)
+            for _,result := range nmapResults {
+                finalResults = append(finalResults, result)
+            }
         }
     } else {
         log.Println("[INFO] Domain detected:", target)
         subs := services.RunSubfinder(target)
         log.Printf("[INFO] %d subdomínios encontrados para %s", len(subs), target)
 
+        var wg sync.WaitGroup
+        var mu sync.Mutex
+
         for _, sub := range subs {
-            ips, err := net.LookupHost(sub)
-            if err != nil || len(ips) == 0 {
-                log.Printf("[INFO] Ignorando %s: não resolve", sub)
-                continue
-            }
-            openPorts := services.RunNaabu(sub, portas)
-            if len(openPorts) == 0 {
-                continue
-            }
-            log.Printf("[INFO] Portas abertas em %s: %v", sub, openPorts)
-            details := services.RunNmap(sub, openPorts)
-            finalResults = append(finalResults, models.HostResult{
-                Host:  sub,
-                Ports: details,
-            })
+            sub := sub // evitar race condition
+            wg.Add(1)
+
+            go func() {
+                defer wg.Done()
+
+                ips, err := net.LookupHost(sub)
+                if err != nil || len(ips) == 0 {
+                    log.Printf("[INFO] Ignorando %s: não resolve", sub)
+                    return
+                }
+
+                openPorts := services.RunNaabu(sub, portas)
+                if len(openPorts) == 0 {
+                    return
+                }
+
+                result := services.RunNmapFast(sub, openPorts)
+
+                mu.Lock()
+                finalResults = append(finalResults, models.HostResult{
+                    Host:  sub,
+                    MAC:   result.MAC,
+                    OS:    result.OS,
+                    Ports: result.Ports,
+                })
+                mu.Unlock()
+            }()
         }
+
+        wg.Wait()
     }
 
     if len(finalResults) == 0 {
