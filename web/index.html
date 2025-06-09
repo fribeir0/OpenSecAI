@@ -9,6 +9,7 @@
 </head>
 <body class="bg-gray-900 text-white p-6">
   <div class="max-w-6xl mx-auto space-y-6">
+    <!-- TOPO -->
     <div class="bg-gray-800 p-6 rounded-lg shadow-md">
       <h1 class="text-3xl font-bold text-teal-400 mb-2">OpenSecAI</h1>
       <p class="text-gray-300 mb-4">Scanner inteligente com análise de vulnerabilidades</p>
@@ -25,9 +26,27 @@
     <div id="dashboard" class="hidden bg-gray-800 p-6 rounded-lg shadow-md">
       <h2 class="text-2xl font-semibold mb-4">📊 Visão Geral</h2>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <canvas id="chartOS"></canvas>
-        <canvas id="chartDevices"></canvas>
-        <canvas id="chartCVEs"></canvas>
+        <!-- Gráfico OS -->
+        <div class="bg-gray-900 p-4 rounded-lg shadow-md h-[350px]">
+          <h3 class="text-teal-300 text-sm mb-2 text-center font-semibold">Sistemas Operacionais</h3>
+          <div class="h-[300px] w-full">
+            <canvas id="chartOS" class="w-full h-full"></canvas>
+          </div>
+        </div>
+        <!-- Gráfico Dispositivos -->
+        <div class="bg-gray-900 p-4 rounded-lg shadow-md h-[350px]">
+          <h3 class="text-teal-300 text-sm mb-2 text-center font-semibold">Tipos de Dispositivo</h3>
+          <div class="h-[300px] w-full">
+            <canvas id="chartDevices" class="w-full h-full"></canvas>
+          </div>
+        </div>
+        <!-- Gráfico CVEs -->
+        <div class="bg-gray-900 p-4 rounded-lg shadow-md h-[350px]">
+          <h3 class="text-teal-300 text-sm mb-2 text-center font-semibold">CVEs Críticos</h3>
+          <div class="h-[300px] w-full">
+            <canvas id="chartCVEs" class="w-full h-full"></canvas>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -72,9 +91,7 @@
     });
 
     function renderCharts(data) {
-      const osMap = {};
-      const typeMap = {};
-      const cveMap = {};
+      const osMap = {}, typeMap = {}, cveMap = {};
 
       data.forEach(h => {
         const os = (h.os || "Desconhecido").split(" ")[0];
@@ -93,6 +110,11 @@
         data: {
           labels: Object.keys(osMap),
           datasets: [{ data: Object.values(osMap), label: "Sistemas" }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { labels: { color: "#fff" } } }
         }
       });
 
@@ -100,7 +122,16 @@
         type: "bar",
         data: {
           labels: Object.keys(typeMap),
-          datasets: [{ data: Object.values(typeMap), label: "Dispositivos" }]
+          datasets: [{ data: Object.values(typeMap), label: "Dispositivos", backgroundColor: "#14b8a6" }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: "#ccc" } },
+            y: { ticks: { color: "#ccc" } }
+          }
         }
       });
 
@@ -108,7 +139,16 @@
         type: "bar",
         data: {
           labels: Object.keys(cveMap),
-          datasets: [{ data: Object.values(cveMap), label: "CVEs Críticos" }]
+          datasets: [{ data: Object.values(cveMap), label: "CVEs", backgroundColor: "#f87171" }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: "#ccc" } },
+            y: { ticks: { color: "#ccc" } }
+          }
         }
       });
 
@@ -116,8 +156,7 @@
     }
 
     function renderResult(data) {
-      const container = document.getElementById("result");
-      container.innerHTML = "";
+      resultDiv.innerHTML = "";
 
       data.forEach(host => {
         const analysis = host.analysis || {};
@@ -133,7 +172,6 @@
           <div class="mt-2 text-sm text-gray-100 space-y-2">
             <p><strong>MAC:</strong> ${host.mac || "-"}</p>
             <p><strong>OS:</strong> ${host.os || "-"}</p>
-
             <p><strong>Tipo:</strong> ${analysis.tipo_dispositivo || "-"}</p>
             <p><strong>Justificativa:</strong> ${analysis.justificativa || "-"}</p>
 
@@ -146,19 +184,19 @@
             ${
               cves.length > 0
                 ? `<ul class="list-disc list-inside text-red-400 space-y-1">
-                ${cves.map(cve => `
-                  <li>
-                    <a href="${cve.link}" target="_blank" class="underline">${cve.cve}</a> – ${cve.descricao} (CVSS: ${cve.cvss})
-                  </li>`).join("")}
-              </ul>`
+                    ${cves.map(cve => `
+                      <li>
+                        <a href="${cve.link}" target="_blank" class="underline">${cve.cve}</a> – ${cve.descricao} (CVSS: ${cve.cvss})
+                      </li>`).join("")}
+                  </ul>`
                 : `<p class="text-gray-400 italic">Nenhuma CVE crítica identificada.</p>`
             }
           </div>
         `;
-        container.appendChild(section);
+        resultDiv.appendChild(section);
       });
 
-      container.classList.remove("hidden");
+      resultDiv.classList.remove("hidden");
     }
   </script>
 </body>
