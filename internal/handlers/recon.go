@@ -58,7 +58,7 @@ func ReconHandler(c *gin.Context) {
                     return
                 }
 
-                result := services.RunNmapFast(sub, openPorts)
+                result := services.RunNmapVulners(sub, openPorts)
 
                 mu.Lock()
                 finalResults = append(finalResults, models.HostResult{

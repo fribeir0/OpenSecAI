@@ -1,10 +1,16 @@
 package models
 
-type CVEInfo struct {
-    ID     string  `json:"id"`
-    CVSS   float64 `json:"cvss"`
-    Desc   string  `json:"description"`
-    Link   string  `json:"link"`
+type Vulnerability struct {
+    ID          string  `json:"id"`          
+    Source      string  `json:"source"`       
+    Link        string  `json:"link"`         
+    Description string  `json:"description"` 
+    CVSS        float64 `json:"cvss"`        
+}
+
+type CveDetail struct {
+	Summary string  `json:"summary"`
+	Cvss    float64 `json:"cvss"`
 }
 
 type PortService struct {
@@ -12,7 +18,6 @@ type PortService struct {
     Protocol string    `json:"protocol"`
     Service  string    `json:"service"`
     Version  string    `json:"version"`
-    CVEs     []CVEInfo `json:"cves,omitempty"`
 }
 
 type HostResult struct {
@@ -20,7 +25,7 @@ type HostResult struct {
     MAC      string             `json:"mac,omitempty"`
     OS       string             `json:"os,omitempty"`
     Ports    []PortService      `json:"ports"`
-    Analysis map[string]interface{} `json:"analysis,omitempty"`
+    Vulnerabilities []Vulnerability `json:"vulnerabilities,omitempty"`
 }
 
 
