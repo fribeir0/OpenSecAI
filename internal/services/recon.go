@@ -153,74 +153,99 @@ func RunNmapVulners(target string, ports []int) models.HostResult {
 }
 
 func RunNmapMultiFast(hosts map[string][]int) map[string]models.HostResult {
-    results := make(map[string]models.HostResult)
+	results := make(map[string]models.HostResult)
+	if len(hosts) == 0 {
+		return results
+	}
 
-    if len(hosts) == 0 {
-        return results
-    }
+	// Coleta IPs e porta única
+	var allIPs []string
+	portSet := make(map[int]struct{})
+	for ip, ports := range hosts {
+		allIPs = append(allIPs, ip)
+		for _, p := range ports {
+			portSet[p] = struct{}{}
+		}
+	}
 
-    // coleta IPs e porta única
-    var allIPs []string
-    portSet := make(map[int]struct{})
-    for ip, ports := range hosts {
-        allIPs = append(allIPs, ip)
-        for _, p := range ports {
-            portSet[p] = struct{}{}
-        }
-    }
+	// Monta "22,80,443"
+	var uniquePorts []string
+	for p := range portSet {
+		uniquePorts = append(uniquePorts, strconv.Itoa(p))
+	}
+	portsStr := strings.Join(uniquePorts, ",")
 
-    // monta "22,80,443"
-    var uniquePorts []string
-    for p := range portSet {
-        uniquePorts = append(uniquePorts, strconv.Itoa(p))
-    }
-    portsStr := strings.Join(uniquePorts, ",")
+	// Args: Remover `-O` (detecção de SO)
+	args := []string{
+		"-T4", "--max-retries", "1", "--host-timeout", "30s",
+		"-Pn", "-sV", "-p", portsStr, // Removido `-O` aqui
+	}
+	args = append(args, allIPs...)
 
-    // args: somente vulners
-    args := []string{
-        "-T4", "--max-retries", "1", "--host-timeout", "30s",
-        "-Pn", "-p", portsStr,
-        "--script", "vulners",
-    }
-    args = append(args, allIPs...)
+	log.Printf("[DEBUG] Executando NmapMultiFast: nmap %s", strings.Join(args, " "))
+	out, err := exec.Command("nmap", args...).Output()
+	if err != nil {
+		log.Printf("[ERROR] NmapMultiFast falhou: %v", err)
+		log.Printf("[DEBUG] Saída do Nmap: %s", string(out)) // Imprime a saída de erro do Nmap
+		return results
+	}
 
-    log.Printf("[DEBUG] nmap %s", strings.Join(args, " "))
-    out, err := exec.Command("nmap", args...).Output()
-    if err != nil {
-        log.Printf("[ERROR] NmapMultiFast falhou: %v", err)
-        return results
-    }
+	// Parse do bloco de saída do Nmap
+	blocks := strings.Split(string(out), "Nmap scan report for ")
+	for _, block := range blocks[1:] {
+		lines := strings.Split(block, "\n")
+		hostLine := strings.Fields(lines[0])
+		if len(hostLine) == 0 {
+			continue
+		}
 
-    // parse bloque por host
-    blocks := strings.Split(string(out), "Nmap scan report for ")
-    for _, block := range blocks[1:] {
-        lines := strings.Split(block, "\n")
-        header := strings.Fields(lines[0])
-        if len(header) == 0 {
-            continue
-        }
-        ip := header[len(header)-1]
-        hr := models.HostResult{ Host: ip }
+		ip := hostLine[len(hostLine)-1]
+		var hostResult models.HostResult
+		hostResult.Host = ip
 
-        // extrai IDs CVE e adiciona ao slice
-        for _, line := range lines {
-            line = strings.TrimSpace(line)
-            if parts := strings.SplitN(line, "Vulners:", 2); len(parts) == 2 {
-                for _, id := range strings.Split(parts[1], ",") {
-                    id = strings.TrimSpace(id)
-                    if id != "" {
-                        hr.Vulnerabilities = append(hr.Vulnerabilities, models.Vulnerability{
-                            ID:     id,
-                            Source: "vulners",
-                        })
-                    }
-                }
-            }
-        }
+		// Extrai os IDs das CVEs
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
 
-        enrichVulns(hr.Vulnerabilities)
-        results[ip] = hr
-    }
+			// Parse de portas abertas e CVEs
+			if strings.Contains(line, "/tcp") && strings.Contains(line, "open") {
+				fields := strings.Fields(line)
+				if len(fields) >= 4 {
+					portStr := strings.Split(fields[0], "/")[0]
+					port, _ := strconv.Atoi(portStr)
+					service := fields[2]
+					version := strings.Join(fields[3:], " ")
 
-    return results
+					hostResult.Ports = append(hostResult.Ports, models.PortService{
+						Port:     port,
+						Protocol: "tcp",
+						Service:  service,
+						Version:  version,
+					})
+				}
+			}
+
+			// Extração de vulnerabilidades (CVEs)
+			if strings.Contains(line, "Vulners:") {
+				parts := strings.SplitN(line, "Vulners:", 2)
+				for _, id := range strings.Split(parts[1], ",") {
+					id = strings.TrimSpace(id)
+					if id != "" {
+						hostResult.Vulnerabilities = append(hostResult.Vulnerabilities, models.Vulnerability{
+							ID:     id,
+							Source: "vulners",
+						})
+					}
+				}
+			}
+		}
+
+		// Enriquecer as vulnerabilidades encontradas
+		enrichVulns(hostResult.Vulnerabilities)
+
+		// Armazenar o resultado para o host
+		results[ip] = hostResult
+	}
+
+	return results
 }
